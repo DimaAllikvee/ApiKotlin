@@ -1,6 +1,5 @@
 package com.example.apikotlin
 
-
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -26,12 +25,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okio.IOException
+import org.json.JSONArray
 
 data class Post(
     val title: String,
@@ -46,7 +50,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MaterialTheme() {
+            MaterialTheme {
                 apiScreen()
             }
         }
@@ -115,7 +119,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // SEE ON POSTITUSE KAARDI KARKASS
     @Composable
     fun PostCard(number: Int, post: Post) {
         Card(
@@ -157,23 +160,54 @@ class MainActivity : ComponentActivity() {
             .url("https://jsonplaceholder.typicode.com/posts")
             .build()
 
-        client.newCall(request).enqueue(object : okhttp3.Callback {
-            override fun onFailure(call: okhttp3.Call, e: IOException) {
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
                 mainHandler.post {
                     onError(e.message ?: "Unknown error")
                 }
             }
-            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+
+            override fun onResponse(call: Call, response: Response) {
                 response.use {
-                    if(!response.isSuccessful) {
+                    if (!response.isSuccessful) {
                         mainHandler.post {
                             onError("Error: ${response.code}")
+                        }
+                        return
+                    }
+
+                    val responseBody = response.body?.string()
+                    if (responseBody == null) {
+                        mainHandler.post {
+                            onError("Empty response body")
+                        }
+                        return
+                    }
+
+                    try {
+                        val jsonArray = JSONArray(responseBody)
+                        val result = mutableListOf<Post>()
+
+                        for (i in 0 until jsonArray.length()) {
+                            val item = jsonArray.getJSONObject(i)
+                            result.add(
+                                Post(
+                                    title = item.getString("title"),
+                                    body = item.getString("body")
+                                )
+                            )
+                        }
+
+                        mainHandler.post {
+                            onSuccess(result)
+                        }
+                    } catch (e: Exception) {
+                        mainHandler.post {
+                            onError("Parsing error: ${e.message}")
                         }
                     }
                 }
             }
         })
     }
-
 }
-
